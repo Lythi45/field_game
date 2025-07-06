@@ -120,11 +120,15 @@ class Worker:
     
     def _update_stats(self, dt: float):
         """Update worker stats over time"""
-        # Energy decreases while working
+        # Energy decreases while working or moving
         if self.state == WorkerState.WORKING:
-            self.energy -= 10.0 * dt  # 10 energy per second while working
+            self.energy -= 8.0 * dt  # 8 energy per second while working
+        elif self.state == WorkerState.MOVING:
+            self.energy -= 3.0 * dt  # 3 energy per second while moving
         elif self.state == WorkerState.RESTING:
-            self.energy += 20.0 * dt  # 20 energy per second while resting
+            self.energy += 25.0 * dt  # 25 energy per second while resting
+        elif self.state == WorkerState.SEEKING_WORK:
+            self.energy -= 1.0 * dt  # 1 energy per second while seeking work
         
         # Clamp energy
         self.energy = IsometricMath.clamp(self.energy, 0.0, 100.0)
@@ -134,12 +138,14 @@ class Worker:
             self.happiness -= 5.0 * dt  # Unhappy when tired
         elif self.state == WorkerState.WORKING:
             self.happiness += 1.0 * dt  # Happy when productive
+        elif self.state == WorkerState.RESTING:
+            self.happiness += 2.0 * dt  # Happy when resting
         
         # Clamp happiness
         self.happiness = IsometricMath.clamp(self.happiness, 0.0, 100.0)
         
         # Efficiency based on energy and happiness
-        self.efficiency = (self.energy / 100.0) * (self.happiness / 100.0)
+        self.efficiency = max(0.1, (self.energy / 100.0) * (self.happiness / 100.0))
     
     def _update_idle(self, dt: float, world):
         """Update idle state"""
@@ -154,6 +160,12 @@ class Worker:
     
     def _update_seeking_work(self, dt: float, world):
         """Update work-seeking state"""
+        # Check if worker needs rest before seeking work
+        if self.energy < 30:
+            print(f"{self.name} needs rest before seeking work (energy: {self.energy:.0f})")
+            self.state = WorkerState.RESTING
+            return
+        
         # Find work based on worker type
         if self.type == WorkerType.FARMER:
             task = self._find_farming_task(world)
@@ -162,8 +174,8 @@ class Worker:
                 return
         elif self.type == WorkerType.BUILDER:
             # Builders could look for construction tasks
-            # For now, just wander around
-            if random.random() < 0.1:  # 10% chance to move randomly
+            # For now, just wander around (but only if they have energy)
+            if self.energy > 50 and random.random() < 0.1:  # 10% chance to move randomly
                 self._wander_randomly(world)
                 return
         
@@ -172,6 +184,14 @@ class Worker:
     
     def _update_moving(self, dt: float, world):
         """Update movement along path"""
+        # Check if worker needs rest (interrupt movement if energy too low)
+        if self.energy < 20:
+            print(f"{self.name} stopping movement due to low energy ({self.energy:.0f})")
+            self.current_task = None  # Abandon current task
+            self.path = []
+            self.state = WorkerState.RESTING
+            return
+        
         if not self.path or self.path_index >= len(self.path):
             # Reached destination
             self.state = WorkerState.WORKING if self.current_task else WorkerState.IDLE
@@ -204,6 +224,13 @@ class Worker:
             self.state = WorkerState.IDLE
             return
         
+        # Check if worker needs rest (interrupt work if energy too low)
+        if self.energy < 20:
+            print(f"{self.name} stopping work due to low energy ({self.energy:.0f})")
+            self.current_task = None  # Abandon current task
+            self.state = WorkerState.RESTING
+            return
+        
         # Work on current task
         work_rate = self.efficiency * self.properties["work_efficiency"]
         self.current_task.progress += work_rate * dt
@@ -218,8 +245,13 @@ class Worker:
         """Update resting state"""
         self.rest_timer += dt
         
-        # Rest for at least 10 seconds or until energy is above 80
-        if self.rest_timer >= 10.0 and self.energy > 80:
+        # Rest until energy is sufficiently recovered
+        if self.energy >= 70:  # Rest until 70% energy
+            print(f"{self.name} finished resting (energy: {self.energy:.0f})")
+            self.rest_timer = 0.0
+            self.state = WorkerState.IDLE
+        elif self.rest_timer >= 15.0:  # Or rest for max 15 seconds
+            print(f"{self.name} finished resting after 15 seconds (energy: {self.energy:.0f})")
             self.rest_timer = 0.0
             self.state = WorkerState.IDLE
     
