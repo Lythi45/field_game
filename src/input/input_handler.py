@@ -95,11 +95,15 @@ class InputHandler:
     
     def _handle_mouse_wheel(self, direction):
         """Handle mouse wheel events for zooming"""
-        camera = self.renderer.get_camera()
-        if direction > 0:
-            camera.zoom_in()
-        else:
-            camera.zoom_out()
+        try:
+            camera = self.renderer.get_camera()
+            if direction > 0:
+                camera.zoom_in()
+            elif direction < 0:
+                camera.zoom_out()
+        except Exception as e:
+            print(f"Mouse wheel error: {e}")
+            # Don't crash the game, just ignore the zoom
     
     def update(self, dt: float):
         """Update input state (for continuous input like movement)"""
