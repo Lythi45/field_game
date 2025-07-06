@@ -448,10 +448,13 @@ class Worker:
                 
                 if world.is_valid_position(check_x, check_y):
                     tile = world.get_tile(check_x, check_y)
-                    if tile and tile.building and tile.building.properties.get("function") == "storage":
-                        if tile.building.can_operate():
+                    if tile and tile.building:
+                        building = tile.building
+                        if (building.properties.get("function") == "storage" and 
+                            building.can_operate() and 
+                            building.state.name == "COMPLETED"):
                             distance = abs(dx) + abs(dy)
-                            storage_buildings.append((distance, tile.building))
+                            storage_buildings.append((distance, building))
         
         # Sort by distance (closest first)
         storage_buildings.sort()
