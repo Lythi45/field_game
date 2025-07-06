@@ -184,9 +184,13 @@ class Worker:
                 self.assign_task(task)
                 return
         elif self.type == WorkerType.BUILDER:
-            # Builders could look for construction tasks
-            # For now, just wander around (but only if they have energy)
-            if self.energy > 50 and random.random() < 0.1:  # 10% chance to move randomly
+            # Look for construction tasks
+            task = self._find_building_task(world)
+            if task:
+                self.assign_task(task)
+                return
+            # If no construction work, occasionally wander (but only if they have energy)
+            elif self.energy > 50 and random.random() < 0.05:  # 5% chance to move randomly
                 self._wander_randomly(world)
                 return
         
@@ -336,6 +340,8 @@ class Worker:
             self._complete_harvest_task(world, task)
         elif task.type == "water_crop":
             self._complete_water_task(world, task)
+        elif task.type == "build_structure":
+            self._complete_build_task(world, task)
         
         # Gain experience
         self.experience += 1
@@ -445,6 +451,148 @@ class Worker:
         else:
             # No task to resume, go idle
             self.state = WorkerState.IDLE
+    
+    def _find_building_task(self, world) -> Optional[Task]:
+        """Find a building construction task near the worker"""
+        # Look for suitable building locations within range
+        search_radius = 20
+        
+        # Create list of positions sorted by distance
+        positions = []
+        for dy in range(-search_radius, search_radius + 1):
+            for dx in range(-search_radius, search_radius + 1):
+                check_x = int(self.x) + dx
+                check_y = int(self.y) + dy
+                
+                if world.is_valid_position(check_x, check_y):
+                    distance = abs(dx) + abs(dy)  # Manhattan distance
+                    positions.append((distance, check_x, check_y))
+        
+        # Sort by distance (closest first)
+        positions.sort()
+        
+        # Check positions for building opportunities
+        for distance, check_x, check_y in positions:
+            if world.is_buildable(check_x, check_y):
+                tile = world.get_tile(check_x, check_y)
+                if tile and not tile.building:
+                    # Decide what to build based on nearby needs
+                    building_type = self._decide_building_type(world, check_x, check_y)
+                    if building_type:
+                        task = Task("build_structure", (check_x, check_y), priority=2)
+                        task.duration = self._get_building_duration(building_type)
+                        task.building_type = building_type  # Store what to build
+                        return task
+        
+        return None
+    
+    def _decide_building_type(self, world, x: int, y: int):
+        """Decide what type of building to construct based on needs"""
+        from src.entities.building import BuildingType
+        
+        # Count existing buildings in the area
+        nearby_radius = 10
+        building_counts = {}
+        
+        for dy in range(-nearby_radius, nearby_radius + 1):
+            for dx in range(-nearby_radius, nearby_radius + 1):
+                check_x = x + dx
+                check_y = y + dy
+                
+                if world.is_valid_position(check_x, check_y):
+                    tile = world.get_tile(check_x, check_y)
+                    if tile and tile.building:
+                        building_type = tile.building.type.value
+                        building_counts[building_type] = building_counts.get(building_type, 0) + 1
+        
+        # Building priority based on needs
+        total_buildings = sum(building_counts.values())
+        
+        # Always need at least one house
+        if building_counts.get("house", 0) == 0:
+            return BuildingType.HOUSE
+        
+        # Need storage for farming operations
+        if building_counts.get("warehouse", 0) == 0 and total_buildings >= 1:
+            return BuildingType.WAREHOUSE
+        
+        # Build more houses for growing population
+        if building_counts.get("house", 0) < 3:
+            return BuildingType.HOUSE
+        
+        # Build farm buildings near farmland
+        nearby_farmland = self._count_nearby_farmland(world, x, y, radius=5)
+        if nearby_farmland > 3 and building_counts.get("farm", 0) == 0:
+            return BuildingType.FARM
+        
+        # Build workshops for production
+        if building_counts.get("workshop", 0) == 0 and total_buildings >= 3:
+            return BuildingType.WORKSHOP
+        
+        # Build wells for water access
+        if building_counts.get("well", 0) == 0 and total_buildings >= 2:
+            return BuildingType.WELL
+        
+        return None  # No building needed right now
+    
+    def _count_nearby_farmland(self, world, center_x: int, center_y: int, radius: int = 5) -> int:
+        """Count farmland tiles within radius"""
+        from src.world.tile import TileType
+        count = 0
+        
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                check_x = center_x + dx
+                check_y = center_y + dy
+                
+                if world.is_valid_position(check_x, check_y):
+                    tile = world.get_tile(check_x, check_y)
+                    if tile and tile.type == TileType.FARMLAND:
+                        count += 1
+        
+        return count
+    
+    def _get_building_duration(self, building_type) -> float:
+        """Get construction time for different building types"""
+        from src.entities.building import BuildingType
+        
+        durations = {
+            BuildingType.HOUSE: 15.0,      # 15 seconds
+            BuildingType.WAREHOUSE: 20.0,  # 20 seconds
+            BuildingType.FARM: 12.0,       # 12 seconds
+            BuildingType.WORKSHOP: 25.0,   # 25 seconds
+            BuildingType.WELL: 10.0,       # 10 seconds
+        }
+        
+        return durations.get(building_type, 15.0)
+    
+    def _complete_build_task(self, world, task):
+        """Complete a building construction task"""
+        from src.entities.building import Building
+        
+        x, y = task.target_pos
+        building_type = getattr(task, 'building_type', None)
+        
+        if building_type and world.is_buildable(x, y):
+            tile = world.get_tile(x, y)
+            if tile and not tile.building:
+                # Create and place the building
+                building = Building(building_type, x, y)
+                building.start_construction()
+                building.construction_progress = 1.0  # Complete immediately
+                building.state = building.state.COMPLETED
+                
+                if world.place_building(x, y, building):
+                    print(f"{self.name} built {building_type.value} at ({x}, {y})")
+                    
+                    # Add building to inventory as "built structures"
+                    built_type = building_type.value
+                    if built_type in self.inventory:
+                        self.inventory[built_type] += 1
+                    else:
+                        self.inventory[built_type] = 1
+                else:
+                    print(f"{self.name} failed to place {building_type.value} at ({x}, {y})")
     
     def can_work(self) -> bool:
         """Check if worker can work"""

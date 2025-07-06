@@ -76,7 +76,7 @@ class Renderer:
         
         return surface
     
-    def render_world(self, world: World, workers: list = None):
+    def render_world(self, world: World, workers: list = None, buildings: list = None):
         """Render the game world"""
         # Clear screen
         self.screen.fill(Config.BACKGROUND_COLOR)
@@ -101,6 +101,12 @@ class Renderer:
         if workers:
             for worker in workers:
                 self._render_worker(worker)
+        
+        # Render buildings from buildings list (in addition to world buildings)
+        if buildings:
+            for building in buildings:
+                screen_x, screen_y = self.camera.world_to_screen(building.x, building.y)
+                self._render_building(building, screen_x, screen_y)
         
         # Render selection
         if self.selected_tile:
