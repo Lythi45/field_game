@@ -154,11 +154,17 @@ class Worker:
     
     def _update_seeking_work(self, dt: float, world):
         """Update work-seeking state"""
-        # Simple work finding - look for nearby farmable tiles
+        # Find work based on worker type
         if self.type == WorkerType.FARMER:
             task = self._find_farming_task(world)
             if task:
                 self.assign_task(task)
+                return
+        elif self.type == WorkerType.BUILDER:
+            # Builders could look for construction tasks
+            # For now, just wander around
+            if random.random() < 0.1:  # 10% chance to move randomly
+                self._wander_randomly(world)
                 return
         
         # If no work found, go idle
@@ -219,26 +225,48 @@ class Worker:
     
     def _find_farming_task(self, world) -> Optional[Task]:
         """Find a farming task near the worker"""
-        # Look for farmable tiles within range
-        search_radius = 10
+        # Look for farmable tiles within range, starting from closest
+        search_radius = 15
         
+        # Create list of positions sorted by distance
+        positions = []
         for dy in range(-search_radius, search_radius + 1):
             for dx in range(-search_radius, search_radius + 1):
                 check_x = int(self.x) + dx
                 check_y = int(self.y) + dy
                 
-                if world.is_farmable(check_x, check_y):
-                    tile = world.get_tile(check_x, check_y)
-                    if tile and not tile.crop:
-                        # Found empty farmable tile
-                        task = Task("plant_crop", (check_x, check_y), priority=2)
-                        task.duration = 5.0  # 5 seconds to plant
-                        return task
-                    elif tile and tile.crop and tile.crop.is_ready():
-                        # Found ready crop to harvest
+                if world.is_valid_position(check_x, check_y):
+                    distance = abs(dx) + abs(dy)  # Manhattan distance
+                    positions.append((distance, check_x, check_y))
+        
+        # Sort by distance (closest first)
+        positions.sort()
+        
+        # Check positions in order of distance
+        for distance, check_x, check_y in positions:
+            if world.is_farmable(check_x, check_y):
+                tile = world.get_tile(check_x, check_y)
+                if tile:
+                    # Priority 1: Harvest ready crops
+                    if tile.crop and tile.crop.is_ready():
                         task = Task("harvest_crop", (check_x, check_y), priority=3)
                         task.duration = 3.0  # 3 seconds to harvest
                         return task
+                    
+                    # Priority 2: Water crops that need watering
+                    elif tile.crop and not tile.crop.watered and tile.crop.stage.name != "READY":
+                        task = Task("water_crop", (check_x, check_y), priority=2)
+                        task.duration = 2.0  # 2 seconds to water
+                        return task
+                    
+                    # Priority 3: Plant on empty farmable tiles (but not too many at once)
+                    elif not tile.crop:
+                        # Check if there are already enough crops nearby
+                        nearby_crops = self._count_nearby_crops(world, check_x, check_y, radius=3)
+                        if nearby_crops < 2:  # Don't overcrowd
+                            task = Task("plant_crop", (check_x, check_y), priority=1)
+                            task.duration = 5.0  # 5 seconds to plant
+                            return task
         
         return None
     
@@ -264,6 +292,8 @@ class Worker:
             self._complete_plant_task(world, task)
         elif task.type == "harvest_crop":
             self._complete_harvest_task(world, task)
+        elif task.type == "water_crop":
+            self._complete_water_task(world, task)
         
         # Gain experience
         self.experience += 1
@@ -277,11 +307,17 @@ class Worker:
         from src.entities.crop import Crop, CropType
         
         x, y = task.target_pos
-        if world.is_farmable(x, y):
+        tile = world.get_tile(x, y)
+        
+        # Only plant if tile is still empty and farmable
+        if tile and world.is_farmable(x, y) and not tile.crop:
             # Plant a random crop
             crop_type = random.choice(list(CropType))
             crop = Crop(crop_type)
-            world.plant_crop(x, y, crop)
+            if world.plant_crop(x, y, crop):
+                print(f"{self.name} planted {crop_type.value} at ({x}, {y})")
+            else:
+                print(f"{self.name} failed to plant at ({x}, {y}) - tile occupied")
     
     def _complete_harvest_task(self, world, task):
         """Complete a harvesting task"""
@@ -299,6 +335,50 @@ class Worker:
                 self.inventory[crop_type] = amount
             
             print(f"{self.name} harvested {amount} {crop_type}")
+    
+    def _complete_water_task(self, world, task):
+        """Complete a watering task"""
+        x, y = task.target_pos
+        tile = world.get_tile(x, y)
+        
+        if tile and tile.crop and not tile.crop.watered:
+            tile.crop.water()
+            print(f"{self.name} watered {tile.crop.type.value} at ({x}, {y})")
+    
+    def _count_nearby_crops(self, world, center_x: int, center_y: int, radius: int = 3) -> int:
+        """Count crops within radius of a position"""
+        count = 0
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                check_x = center_x + dx
+                check_y = center_y + dy
+                
+                if world.is_valid_position(check_x, check_y):
+                    tile = world.get_tile(check_x, check_y)
+                    if tile and tile.crop:
+                        count += 1
+        
+        return count
+    
+    def _wander_randomly(self, world):
+        """Make worker wander to a random nearby location"""
+        # Pick a random direction
+        directions = [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
+        dx, dy = random.choice(directions)
+        
+        # Move 3-5 tiles in that direction
+        distance = random.randint(3, 5)
+        target_x = int(self.x + dx * distance)
+        target_y = int(self.y + dy * distance)
+        
+        # Find nearest walkable position
+        walkable_pos = world.find_nearest_walkable(target_x, target_y, max_distance=5)
+        if walkable_pos:
+            # Create a simple movement task
+            task = Task("wander", walkable_pos, priority=0)
+            task.duration = 1.0  # Quick task
+            self.assign_task(task)
+            print(f"{self.name} wandering to {walkable_pos}")
     
     def can_work(self) -> bool:
         """Check if worker can work"""
