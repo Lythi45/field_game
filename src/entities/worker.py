@@ -106,6 +106,15 @@ class Worker:
         # Update energy and happiness
         self._update_stats(dt)
         
+        # Global energy check - force rest if critically low (safety net)
+        if self.energy <= 10 and self.state != WorkerState.RESTING:
+            print(f"{self.name} EMERGENCY REST - critically low energy ({self.energy:.0f})")
+            self.state = WorkerState.RESTING
+            self.rest_timer = 0.0
+            self.current_task = None
+            self.path = []
+            return
+        
         # State machine
         if self.state == WorkerState.IDLE:
             self._update_idle(dt, world)
@@ -151,7 +160,9 @@ class Worker:
         """Update idle state"""
         # Check if we need rest
         if self.energy < 30:
+            print(f"{self.name} going to rest from idle state (energy: {self.energy:.0f})")
             self.state = WorkerState.RESTING
+            self.rest_timer = 0.0  # Reset rest timer
             return
         
         # Look for work
