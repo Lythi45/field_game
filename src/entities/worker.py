@@ -270,51 +270,53 @@ class Worker:
             self._resume_after_rest()
     
     def _find_farming_task(self, world) -> Optional[Task]:
-        """Find a farming task near the worker"""
-        # Look for farmable tiles within range, starting from closest
+        """Find a farming task near the worker with priority-based selection"""
         search_radius = 15
         
-        # Create list of positions sorted by distance
-        positions = []
+        # Collect all potential tasks with their priorities and distances
+        potential_tasks = []
+        
         for dy in range(-search_radius, search_radius + 1):
             for dx in range(-search_radius, search_radius + 1):
                 check_x = int(self.x) + dx
                 check_y = int(self.y) + dy
                 
                 if world.is_valid_position(check_x, check_y):
-                    distance = abs(dx) + abs(dy)  # Manhattan distance
-                    positions.append((distance, check_x, check_y))
+                    tile = world.get_tile(check_x, check_y)
+                    # Check if tile is farmable OR has crops (for harvesting/watering)
+                    if tile and (world.is_farmable(check_x, check_y) or tile.crop):
+                        distance = abs(dx) + abs(dy)  # Manhattan distance
+                        
+                        # Priority 1: Harvest ready crops (highest priority)
+                        if tile.crop and tile.crop.is_ready():
+                            task = Task("harvest_crop", (check_x, check_y), priority=3)
+                            task.duration = 3.0
+                            potential_tasks.append((3, distance, task))  # (priority, distance, task)
+                        
+                        # Priority 2: Water crops that need watering
+                        elif tile.crop and not tile.crop.watered and tile.crop.stage.name != "READY":
+                            task = Task("water_crop", (check_x, check_y), priority=2)
+                            task.duration = 2.0
+                            potential_tasks.append((2, distance, task))
+                        
+                        # Priority 3: Plant on empty farmable tiles (lowest priority)
+                        elif not tile.crop:
+                            # Check if there are already enough crops nearby
+                            nearby_crops = self._count_nearby_crops(world, check_x, check_y, radius=3)
+                            if nearby_crops < 2:  # Don't overcrowd
+                                task = Task("plant_crop", (check_x, check_y), priority=1)
+                                task.duration = 5.0
+                                potential_tasks.append((1, distance, task))
         
-        # Sort by distance (closest first)
-        positions.sort()
+        if not potential_tasks:
+            return None
         
-        # Check positions in order of distance
-        for distance, check_x, check_y in positions:
-            if world.is_farmable(check_x, check_y):
-                tile = world.get_tile(check_x, check_y)
-                if tile:
-                    # Priority 1: Harvest ready crops
-                    if tile.crop and tile.crop.is_ready():
-                        task = Task("harvest_crop", (check_x, check_y), priority=3)
-                        task.duration = 3.0  # 3 seconds to harvest
-                        return task
-                    
-                    # Priority 2: Water crops that need watering
-                    elif tile.crop and not tile.crop.watered and tile.crop.stage.name != "READY":
-                        task = Task("water_crop", (check_x, check_y), priority=2)
-                        task.duration = 2.0  # 2 seconds to water
-                        return task
-                    
-                    # Priority 3: Plant on empty farmable tiles (but not too many at once)
-                    elif not tile.crop:
-                        # Check if there are already enough crops nearby
-                        nearby_crops = self._count_nearby_crops(world, check_x, check_y, radius=3)
-                        if nearby_crops < 2:  # Don't overcrowd
-                            task = Task("plant_crop", (check_x, check_y), priority=1)
-                            task.duration = 5.0  # 5 seconds to plant
-                            return task
+        # Sort by priority first (highest first), then by distance (closest first)
+        # This ensures harvesting at distance 5 beats planting at distance 1
+        potential_tasks.sort(key=lambda x: (-x[0], x[1]))
         
-        return None
+        # Return the highest priority task (closest among same priority)
+        return potential_tasks[0][2]
     
     def assign_task(self, task: Task):
         """Assign a task to this worker"""
