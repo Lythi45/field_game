@@ -94,6 +94,10 @@ class Tile:
         """Plant a crop on this tile"""
         if self.can_farm():
             self.crop = crop
+            # Convert tile to farmland when crop is planted
+            if self.type != TileType.FARMLAND:
+                self.type = TileType.FARMLAND
+                self._set_properties()  # Update properties for farmland
             return True
         return False
     

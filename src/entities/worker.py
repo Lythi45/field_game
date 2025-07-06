@@ -197,9 +197,8 @@ class Worker:
         """Update movement along path"""
         # Check if worker needs rest (interrupt movement if energy too low)
         if self.energy < 20:
-            print(f"{self.name} stopping movement due to low energy ({self.energy:.0f})")
-            self.current_task = None  # Abandon current task
-            self.path = []
+            print(f"{self.name} pausing movement due to low energy ({self.energy:.0f}) - will resume after rest")
+            # Don't abandon task, just pause movement
             self.state = WorkerState.RESTING
             return
         
@@ -237,8 +236,8 @@ class Worker:
         
         # Check if worker needs rest (interrupt work if energy too low)
         if self.energy < 20:
-            print(f"{self.name} stopping work due to low energy ({self.energy:.0f})")
-            self.current_task = None  # Abandon current task
+            print(f"{self.name} pausing work due to low energy ({self.energy:.0f}) - will resume after rest")
+            # Don't abandon task, just pause it
             self.state = WorkerState.RESTING
             return
         
@@ -260,11 +259,11 @@ class Worker:
         if self.energy >= 70:  # Rest until 70% energy
             print(f"{self.name} finished resting (energy: {self.energy:.0f})")
             self.rest_timer = 0.0
-            self.state = WorkerState.IDLE
+            self._resume_after_rest()
         elif self.rest_timer >= 15.0:  # Or rest for max 15 seconds
             print(f"{self.name} finished resting after 15 seconds (energy: {self.energy:.0f})")
             self.rest_timer = 0.0
-            self.state = WorkerState.IDLE
+            self._resume_after_rest()
     
     def _find_farming_task(self, world) -> Optional[Task]:
         """Find a farming task near the worker"""
@@ -422,6 +421,30 @@ class Worker:
             task.duration = 1.0  # Quick task
             self.assign_task(task)
             print(f"{self.name} wandering to {walkable_pos}")
+    
+    def _resume_after_rest(self):
+        """Resume appropriate state after resting"""
+        if self.current_task:
+            # Resume task - check if we need to move to location first
+            if self.path and self.path_index < len(self.path):
+                print(f"{self.name} resuming movement to {self.current_task.type}")
+                self.state = WorkerState.MOVING
+            else:
+                # Check if we're at the task location
+                task_x, task_y = self.current_task.target_pos
+                distance = abs(self.x - task_x) + abs(self.y - task_y)
+                if distance <= 1.0:  # Close enough to work
+                    print(f"{self.name} resuming {self.current_task.type}")
+                    self.state = WorkerState.WORKING
+                else:
+                    # Need to move to task location
+                    self.path = [self.current_task.target_pos]
+                    self.path_index = 0
+                    print(f"{self.name} moving to resume {self.current_task.type}")
+                    self.state = WorkerState.MOVING
+        else:
+            # No task to resume, go idle
+            self.state = WorkerState.IDLE
     
     def can_work(self) -> bool:
         """Check if worker can work"""
