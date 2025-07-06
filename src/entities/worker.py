@@ -108,11 +108,11 @@ class Worker:
         
         # Global energy check - force rest if critically low (safety net)
         if self.energy <= 10 and self.state != WorkerState.RESTING:
-            print(f"{self.name} EMERGENCY REST - critically low energy ({self.energy:.0f})")
+            print(f"{self.name} EMERGENCY REST - critically low energy ({self.energy:.0f}) - preserving task")
             self.state = WorkerState.RESTING
             self.rest_timer = 0.0
-            self.current_task = None
-            self.path = []
+            # Don't clear current_task - preserve it for resumption
+            # Don't clear path - we'll need it to resume movement
             return
         
         # State machine
