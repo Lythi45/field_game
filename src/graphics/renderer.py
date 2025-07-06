@@ -138,6 +138,10 @@ class Renderer:
     
     def _render_building(self, building, screen_x: int, screen_y: int):
         """Render a building (placeholder)"""
+        # Ensure coordinates are integers
+        screen_x = int(screen_x)
+        screen_y = int(screen_y)
+        
         # Simple colored rectangle for now
         rect = pygame.Rect(
             screen_x - 20, screen_y - 30,
@@ -147,9 +151,77 @@ class Renderer:
         pygame.draw.rect(self.screen, (0, 0, 0), rect, 2)
     
     def _render_crop(self, crop, screen_x: int, screen_y: int):
-        """Render a crop (placeholder)"""
-        # Simple green circle for now
-        pygame.draw.circle(self.screen, (0, 255, 0), (screen_x, screen_y - 10), 8)
+        """Render a crop with color-coded maturity"""
+        # Ensure coordinates are integers
+        screen_x = int(screen_x)
+        screen_y = int(screen_y)
+        
+        # Color based on growth stage
+        stage_colors = {
+            "SEED": (139, 69, 19),      # Brown - just planted
+            "SPROUT": (154, 205, 50),   # Yellow-green - sprouting
+            "YOUNG": (124, 252, 0),     # Lawn green - young plant
+            "MATURE": (34, 139, 34),    # Forest green - mature
+            "READY": (255, 215, 0)      # Gold - ready for harvest
+        }
+        
+        # Get color for current stage
+        color = stage_colors.get(crop.stage.name, (0, 255, 0))
+        
+        # Size based on growth stage (larger as it grows)
+        stage_sizes = {
+            "SEED": 4,
+            "SPROUT": 6,
+            "YOUNG": 8,
+            "MATURE": 10,
+            "READY": 12
+        }
+        
+        radius = stage_sizes.get(crop.stage.name, 8)
+        radius = int(radius * self.camera.zoom)
+        
+        # Only draw if visible
+        if radius >= 2:
+            # Draw crop circle
+            pygame.draw.circle(self.screen, color, (screen_x, screen_y - 10), radius)
+            
+            # Draw outline
+            pygame.draw.circle(self.screen, (0, 0, 0), (screen_x, screen_y - 10), radius, 1)
+            
+            # Add growth progress indicator for mature crops
+            if crop.stage.name in ["MATURE", "READY"] and self.camera.zoom >= 0.8:
+                # Small progress bar above crop
+                bar_width = int(16 * self.camera.zoom)
+                bar_height = int(3 * self.camera.zoom)
+                bar_x = screen_x - bar_width // 2
+                bar_y = screen_y - 25
+                
+                # Background
+                pygame.draw.rect(self.screen, (64, 64, 64), 
+                               (bar_x, bar_y, bar_width, bar_height))
+                
+                # Progress fill
+                progress = crop.get_growth_progress()
+                progress_width = int(progress * bar_width)
+                progress_color = (255, 215, 0) if crop.stage.name == "READY" else (0, 255, 0)
+                pygame.draw.rect(self.screen, progress_color, 
+                               (bar_x, bar_y, progress_width, bar_height))
+            
+            # Show crop type and stage when zoomed in
+            if self.camera.zoom >= 1.0:
+                crop_text = f"{crop.type.value}"
+                if crop.stage.name == "READY":
+                    crop_text += " (Ready!)"
+                
+                text_surface = self.debug_font.render(crop_text, True, (255, 255, 255))
+                text_rect = text_surface.get_rect()
+                text_rect.centerx = screen_x
+                text_rect.bottom = screen_y - radius - 15
+                
+                # Background for text
+                bg_rect = text_rect.inflate(4, 2)
+                pygame.draw.rect(self.screen, (0, 0, 0, 128), bg_rect)
+                self.screen.blit(text_surface, text_rect)
     
     def _render_selection(self, tile):
         """Render selection highlight"""
@@ -293,6 +365,17 @@ class Renderer:
         if self.selected_tile:
             debug_texts.append(f"Selected Tile: ({self.selected_tile.x}, {self.selected_tile.y})")
             debug_texts.append(f"Tile Type: {self.selected_tile.type.value}")
+            
+            # Show crop information if present
+            if self.selected_tile.crop:
+                crop = self.selected_tile.crop
+                debug_texts.append(f"Crop: {crop.type.value}")
+                debug_texts.append(f"Stage: {crop.stage.name}")
+                debug_texts.append(f"Growth: {crop.get_growth_progress():.1%}")
+                debug_texts.append(f"Health: {crop.health:.0f}")
+                debug_texts.append(f"Watered: {'Yes' if crop.watered else 'No'}")
+                if crop.is_ready():
+                    debug_texts.append("READY FOR HARVEST!")
         
         if self.selected_worker:
             debug_texts.append(f"Selected Worker: {self.selected_worker.name}")
