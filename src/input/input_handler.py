@@ -8,9 +8,10 @@ from src.config import Config
 class InputHandler:
     """Handles all user input (keyboard, mouse)"""
     
-    def __init__(self, renderer, world):
+    def __init__(self, renderer, world, workers=None):
         self.renderer = renderer
         self.world = world
+        self.workers = workers or []
         
         # Input state
         self.keys_pressed = set()
@@ -69,12 +70,16 @@ class InputHandler:
     def _handle_mouse_press(self, button, pos):
         """Handle mouse button press events"""
         if button == 1:  # Left click
-            self.renderer.handle_mouse_click(pos, self.world)
+            self.renderer.handle_mouse_click(pos, self.world, self.workers)
             
-            # Get selected tile for debugging
-            selected = self.renderer.get_selected_tile()
-            if selected:
-                print(f"Selected tile: {selected}")
+            # Get selected objects for debugging
+            selected_tile = self.renderer.get_selected_tile()
+            selected_worker = getattr(self.renderer, 'selected_worker', None)
+            
+            if selected_tile:
+                print(f"Selected tile: {selected_tile}")
+            elif selected_worker:
+                print(f"Selected worker: {selected_worker.name} ({selected_worker.type.value})")
         
         elif button == 3:  # Right click
             # Could be used for context menus or other actions

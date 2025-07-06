@@ -24,6 +24,7 @@ class Renderer:
         
         # Selection
         self.selected_tile = None
+        self.selected_worker = None
     
     def _create_tile_surfaces(self) -> dict:
         """Create colored surfaces for each tile type (placeholder graphics)"""
@@ -75,7 +76,7 @@ class Renderer:
         
         return surface
     
-    def render_world(self, world: World):
+    def render_world(self, world: World, workers: list = None):
         """Render the game world"""
         # Clear screen
         self.screen.fill(Config.BACKGROUND_COLOR)
@@ -96,13 +97,22 @@ class Renderer:
                 if tile:
                     self._render_tile(tile)
         
+        # Render workers
+        if workers:
+            for worker in workers:
+                self._render_worker(worker)
+        
         # Render selection
         if self.selected_tile:
             self._render_selection(self.selected_tile)
         
+        # Render worker selection
+        if self.selected_worker:
+            self._render_worker_selection(self.selected_worker)
+        
         # Render debug info
         if Config.DEBUG_MODE:
-            self._render_debug_info()
+            self._render_debug_info(workers)
     
     def _render_tile(self, tile):
         """Render a single tile"""
@@ -155,7 +165,121 @@ class Renderer:
         
         pygame.draw.polygon(self.screen, Config.SELECTION_COLOR, points, 3)
     
-    def _render_debug_info(self):
+    def _render_worker(self, worker):
+        """Render a worker character"""
+        # Get screen position
+        screen_x, screen_y = self.camera.world_to_screen(worker.x, worker.y)
+        
+        # Worker colors based on type
+        worker_colors = {
+            "farmer": (0, 255, 0),      # Green
+            "builder": (255, 165, 0),   # Orange  
+            "crafter": (128, 0, 128),   # Purple
+            "laborer": (139, 69, 19)    # Brown
+        }
+        
+        color = worker_colors.get(worker.type.value, (255, 255, 255))
+        
+        # Draw worker body (circle)
+        body_radius = int(8 * self.camera.zoom)
+        if body_radius >= 2:  # Only draw if visible
+            pygame.draw.circle(self.screen, color, (int(screen_x), int(screen_y - 5)), body_radius)
+            
+            # Draw worker outline
+            pygame.draw.circle(self.screen, (0, 0, 0), (int(screen_x), int(screen_y - 5)), body_radius, 2)
+            
+            # Draw direction indicator (small line showing movement direction)
+            if hasattr(worker, 'path') and worker.path and worker.path_index < len(worker.path):
+                target_x, target_y = worker.path[worker.path_index]
+                target_screen_x, target_screen_y = self.camera.world_to_screen(target_x, target_y)
+                
+                # Draw line to target (very short, just for direction)
+                dx = target_screen_x - screen_x
+                dy = target_screen_y - screen_y
+                length = (dx*dx + dy*dy)**0.5
+                if length > 0:
+                    # Normalize and scale
+                    dx = (dx / length) * 12
+                    dy = (dy / length) * 12
+                    end_x = screen_x + dx
+                    end_y = screen_y + dy - 5
+                    pygame.draw.line(self.screen, (255, 255, 255), 
+                                   (int(screen_x), int(screen_y - 5)), 
+                                   (int(end_x), int(end_y)), 2)
+        
+        # Draw worker name and status (if zoomed in enough)
+        if self.camera.zoom >= 0.8:
+            # Worker name
+            name_surface = self.debug_font.render(worker.name, True, (255, 255, 255))
+            name_rect = name_surface.get_rect()
+            name_rect.centerx = screen_x
+            name_rect.bottom = screen_y - 15
+            
+            # Background for text
+            bg_rect = name_rect.inflate(4, 2)
+            pygame.draw.rect(self.screen, (0, 0, 0, 128), bg_rect)
+            self.screen.blit(name_surface, name_rect)
+            
+            # Worker state
+            state_text = f"{worker.state.name}"
+            if worker.current_task:
+                state_text += f" ({worker.current_task.type})"
+            
+            state_surface = self.debug_font.render(state_text, True, (200, 200, 200))
+            state_rect = state_surface.get_rect()
+            state_rect.centerx = screen_x
+            state_rect.top = name_rect.bottom + 2
+            
+            # Background for state text
+            state_bg_rect = state_rect.inflate(4, 2)
+            pygame.draw.rect(self.screen, (0, 0, 0, 128), state_bg_rect)
+            self.screen.blit(state_surface, state_rect)
+        
+        # Draw energy bar
+        if self.camera.zoom >= 0.6:
+            bar_width = int(20 * self.camera.zoom)
+            bar_height = int(4 * self.camera.zoom)
+            bar_x = int(screen_x - bar_width // 2)
+            bar_y = int(screen_y + 15)
+            
+            # Background
+            pygame.draw.rect(self.screen, (64, 64, 64), 
+                           (bar_x, bar_y, bar_width, bar_height))
+            
+            # Energy fill
+            energy_width = int((worker.energy / 100.0) * bar_width)
+            energy_color = (255, 0, 0) if worker.energy < 30 else (255, 255, 0) if worker.energy < 60 else (0, 255, 0)
+            pygame.draw.rect(self.screen, energy_color, 
+                           (bar_x, bar_y, energy_width, bar_height))
+    
+    def _render_worker_selection(self, worker):
+        """Render selection highlight around worker"""
+        screen_x, screen_y = self.camera.world_to_screen(worker.x, worker.y)
+        
+        # Draw selection circle around worker
+        radius = int(12 * self.camera.zoom)
+        pygame.draw.circle(self.screen, Config.SELECTION_COLOR, 
+                         (int(screen_x), int(screen_y - 5)), radius, 3)
+    
+    def _get_worker_at_mouse(self, mouse_pos: tuple, workers: list):
+        """Get worker at mouse position, if any"""
+        mouse_x, mouse_y = mouse_pos
+        
+        for worker in workers:
+            screen_x, screen_y = self.camera.world_to_screen(worker.x, worker.y)
+            
+            # Check if mouse is within worker's click radius
+            click_radius = max(12, int(12 * self.camera.zoom))
+            dx = mouse_x - screen_x
+            dy = mouse_y - (screen_y - 5)  # Offset for worker body position
+            distance = (dx*dx + dy*dy)**0.5
+            
+            if distance <= click_radius:
+                return worker
+        
+        return None
+    
+    def _render_debug_info(self, workers=None):
         """Render debug information"""
         debug_texts = [
             f"Camera: ({self.camera.x:.1f}, {self.camera.y:.1f})",
@@ -163,9 +287,24 @@ class Renderer:
             f"FPS: {pygame.time.Clock().get_fps():.1f}"
         ]
         
+        if workers:
+            debug_texts.append(f"Workers: {len(workers)}")
+        
         if self.selected_tile:
-            debug_texts.append(f"Selected: ({self.selected_tile.x}, {self.selected_tile.y})")
+            debug_texts.append(f"Selected Tile: ({self.selected_tile.x}, {self.selected_tile.y})")
             debug_texts.append(f"Tile Type: {self.selected_tile.type.value}")
+        
+        if self.selected_worker:
+            debug_texts.append(f"Selected Worker: {self.selected_worker.name}")
+            debug_texts.append(f"Type: {self.selected_worker.type.value}")
+            debug_texts.append(f"State: {self.selected_worker.state.name}")
+            debug_texts.append(f"Energy: {self.selected_worker.energy:.0f}")
+            debug_texts.append(f"Position: ({self.selected_worker.x:.1f}, {self.selected_worker.y:.1f})")
+            if self.selected_worker.current_task:
+                debug_texts.append(f"Task: {self.selected_worker.current_task.type}")
+            if self.selected_worker.inventory:
+                items = ", ".join(f"{k}:{v}" for k, v in self.selected_worker.inventory.items())
+                debug_texts.append(f"Inventory: {items}")
         
         y_offset = 10
         for text in debug_texts:
@@ -173,13 +312,23 @@ class Renderer:
             self.screen.blit(surface, (10, y_offset))
             y_offset += 25
     
-    def handle_mouse_click(self, mouse_pos: tuple, world: World):
-        """Handle mouse click for tile selection"""
+    def handle_mouse_click(self, mouse_pos: tuple, world: World, workers: list = None):
+        """Handle mouse click for tile and worker selection"""
+        # First check if we clicked on a worker
+        if workers:
+            clicked_worker = self._get_worker_at_mouse(mouse_pos, workers)
+            if clicked_worker:
+                self.selected_worker = clicked_worker
+                self.selected_tile = None  # Clear tile selection
+                return
+        
+        # If no worker clicked, check for tile selection
         world_x, world_y = self.camera.screen_to_world(mouse_pos[0], mouse_pos[1])
         
         # Clamp to world bounds
         if 0 <= world_x < world.width and 0 <= world_y < world.height:
             self.selected_tile = world.get_tile(world_x, world_y)
+            self.selected_worker = None  # Clear worker selection
     
     def get_camera(self) -> Camera:
         """Get the camera instance"""

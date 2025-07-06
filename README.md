@@ -9,6 +9,8 @@ A Python/Pygame-based isometric farming and city-building game where you can pla
 - **Tile-based World**: Procedurally generated world with different terrain types
 - **Farming System**: Plant crops, watch them grow through multiple stages, harvest when ready
 - **Worker AI**: Autonomous workers that find tasks, move around, and complete work
+- **Visual Workers**: 3 active workers with different colors and visual feedback
+- **Worker Selection**: Click on workers to see detailed information
 - **Building System**: Construct buildings with construction progress and worker assignment
 - **Camera Controls**: Smooth scrolling, zooming, and viewport management
 - **Resource Management**: Workers carry items and manage inventory
@@ -28,10 +30,17 @@ A Python/Pygame-based isometric farming and city-building game where you can pla
 - Harvest ready crops for resources
 
 ### Workers
-- **Farmers**: Plant, water, and harvest crops automatically
-- **Builders**: Construct and repair buildings
-- **Crafters**: Process materials in workshops
-- **Laborers**: Transport goods and general tasks
+- **Farmers** (Green circles): Plant, water, and harvest crops automatically
+- **Builders** (Orange circles): Construct and repair buildings
+- **Crafters** (Purple circles): Process materials in workshops
+- **Laborers** (Brown circles): Transport goods and general tasks
+
+**Visual Features:**
+- Color-coded by worker type
+- Names and status displayed when zoomed in
+- Energy bars showing worker stamina
+- Movement direction indicators
+- Click to select and view detailed information
 
 ### Buildings
 - **Houses**: Provide housing for workers
@@ -83,8 +92,9 @@ A Python/Pygame-based isometric farming and city-building game where you can pla
 - **R**: Reset camera to origin
 
 ### Interaction
-- **Left Click**: Select tiles
+- **Left Click**: Select tiles or workers
 - **Right Click**: Context actions (future feature)
+- **Worker Selection**: Click on any worker to see their stats and current task
 
 ### Debug
 - **G**: Toggle grid display
