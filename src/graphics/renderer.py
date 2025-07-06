@@ -25,6 +25,7 @@ class Renderer:
         # Selection
         self.selected_tile = None
         self.selected_worker = None
+        self.selected_building = None
     
     def _create_tile_surfaces(self) -> dict:
         """Create colored surfaces for each tile type (placeholder graphics)"""
@@ -395,29 +396,65 @@ class Renderer:
                 items = ", ".join(f"{k}:{v}" for k, v in self.selected_worker.inventory.items())
                 debug_texts.append(f"Inventory: {items}")
         
+        if self.selected_building:
+            debug_texts.append(f"Selected Building: {self.selected_building.type.value}")
+            debug_texts.append(f"State: {self.selected_building.state.name}")
+            debug_texts.append(f"Position: ({self.selected_building.x}, {self.selected_building.y})")
+            debug_texts.append(f"Durability: {self.selected_building.durability:.0f}")
+            
+            # Show storage information for storage buildings
+            if self.selected_building.properties.get("function") == "storage":
+                storage_info = self.selected_building.get_storage_info()
+                debug_texts.append(f"STORAGE CONTENTS:")
+                debug_texts.append(f"Capacity: {storage_info['current_storage']}/{storage_info['storage_capacity']}")
+                
+                if storage_info['inventory']:
+                    for item_type, amount in storage_info['inventory'].items():
+                        debug_texts.append(f"  {item_type}: {amount}")
+                else:
+                    debug_texts.append("  (Empty)")
+                
+                debug_texts.append(f"Space Available: {storage_info['space_available']}")
+            
+            # Show workers assigned to building
+            if self.selected_building.workers_assigned:
+                worker_names = [w.name for w in self.selected_building.workers_assigned]
+                debug_texts.append(f"Workers: {', '.join(worker_names)}")
+            else:
+                debug_texts.append("Workers: None assigned")
+        
         y_offset = 10
         for text in debug_texts:
             surface = self.debug_font.render(text, True, (255, 255, 255))
             self.screen.blit(surface, (10, y_offset))
             y_offset += 25
     
-    def handle_mouse_click(self, mouse_pos: tuple, world: World, workers: list = None):
-        """Handle mouse click for tile and worker selection"""
+    def handle_mouse_click(self, mouse_pos: tuple, world: World, workers: list = None, buildings: list = None):
+        """Handle mouse click for tile, worker, and building selection"""
         # First check if we clicked on a worker
         if workers:
             clicked_worker = self._get_worker_at_mouse(mouse_pos, workers)
             if clicked_worker:
                 self.selected_worker = clicked_worker
                 self.selected_tile = None  # Clear tile selection
+                self.selected_building = None  # Clear building selection
                 return
         
-        # If no worker clicked, check for tile selection
+        # Check for tile selection and building on that tile
         world_x, world_y = self.camera.screen_to_world(mouse_pos[0], mouse_pos[1])
         
         # Clamp to world bounds
         if 0 <= world_x < world.width and 0 <= world_y < world.height:
-            self.selected_tile = world.get_tile(world_x, world_y)
-            self.selected_worker = None  # Clear worker selection
+            tile = world.get_tile(world_x, world_y)
+            if tile:
+                self.selected_tile = tile
+                self.selected_worker = None  # Clear worker selection
+                
+                # Check if tile has a building
+                if tile.building:
+                    self.selected_building = tile.building
+                else:
+                    self.selected_building = None
     
     def get_camera(self) -> Camera:
         """Get the camera instance"""

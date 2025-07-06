@@ -39,6 +39,9 @@ class Game:
         # Create input handler
         self.input_handler = InputHandler(self.renderer, self.world, self.workers)
         
+        # Give input handler access to buildings for selection
+        self.input_handler.buildings = self.buildings
+        
         # Game state
         self.paused = False
         self.game_speed = Config.GAME_SPEED

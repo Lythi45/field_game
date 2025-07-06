@@ -387,6 +387,9 @@ class Worker:
                 self.inventory[crop_type] = amount
             
             print(f"{self.name} harvested {amount} {crop_type}")
+            
+            # Try to store harvested crops in nearby storage buildings
+            self._store_harvested_crops(world, crop_type, amount)
     
     def _complete_water_task(self, world, task):
         """Complete a watering task"""
@@ -431,6 +434,48 @@ class Worker:
             task.duration = 1.0  # Quick task
             self.assign_task(task)
             print(f"{self.name} wandering to {walkable_pos}")
+    
+    def _store_harvested_crops(self, world, crop_type: str, amount: int):
+        """Try to store harvested crops in nearby storage buildings"""
+        # Look for nearby storage buildings
+        search_radius = 20
+        storage_buildings = []
+        
+        for dy in range(-search_radius, search_radius + 1):
+            for dx in range(-search_radius, search_radius + 1):
+                check_x = int(self.x) + dx
+                check_y = int(self.y) + dy
+                
+                if world.is_valid_position(check_x, check_y):
+                    tile = world.get_tile(check_x, check_y)
+                    if tile and tile.building and tile.building.properties.get("function") == "storage":
+                        if tile.building.can_operate():
+                            distance = abs(dx) + abs(dy)
+                            storage_buildings.append((distance, tile.building))
+        
+        # Sort by distance (closest first)
+        storage_buildings.sort()
+        
+        # Try to store in the closest available storage
+        remaining_amount = amount
+        for distance, building in storage_buildings:
+            if remaining_amount <= 0:
+                break
+            
+            stored = building.store_item(crop_type, remaining_amount)
+            if stored > 0:
+                remaining_amount -= stored
+                # Remove from worker inventory and add to building
+                if crop_type in self.inventory:
+                    self.inventory[crop_type] = max(0, self.inventory[crop_type] - stored)
+                    if self.inventory[crop_type] == 0:
+                        del self.inventory[crop_type]
+                
+                print(f"{self.name} stored {stored} {crop_type} in {building.type.value} at ({building.x}, {building.y})")
+        
+        # If couldn't store everything, keep remainder in worker inventory
+        if remaining_amount > 0:
+            print(f"{self.name} keeping {remaining_amount} {crop_type} (no storage space)")
     
     def _resume_after_rest(self):
         """Resume appropriate state after resting"""

@@ -40,8 +40,12 @@ class Building:
         # Functionality
         self.capacity = self.properties.get("capacity", 0)
         self.workers_assigned = []
-        self.inventory = {}
+        self.inventory = {}  # For storage buildings, this holds stored items
         self.efficiency = 1.0
+        
+        # Storage-specific properties
+        self.storage_capacity = self.properties.get("storage_capacity", 0)
+        self.current_storage = 0
         
         # Maintenance
         self.durability = 100.0
@@ -71,7 +75,8 @@ class Building:
             BuildingType.WAREHOUSE: {
                 "construction_time": 75.0,
                 "cost": {"wood": 20, "stone": 8},
-                "capacity": 1000,  # storage capacity
+                "capacity": 1,  # workers that can work here
+                "storage_capacity": 1000,  # items that can be stored
                 "function": "storage"
             },
             BuildingType.WELL: {
@@ -185,6 +190,38 @@ class Building:
     def can_operate(self) -> bool:
         """Check if building can operate"""
         return self.state == BuildingState.COMPLETED and self.durability > 0
+    
+    def store_item(self, item_type: str, amount: int) -> int:
+        """Store items in this building. Returns amount actually stored."""
+        if not self.can_operate() or self.properties.get("function") != "storage":
+            return 0
+        
+        # Check storage capacity
+        space_available = self.storage_capacity - self.current_storage
+        amount_to_store = min(amount, space_available)
+        
+        if amount_to_store > 0:
+            if item_type in self.inventory:
+                self.inventory[item_type] += amount_to_store
+            else:
+                self.inventory[item_type] = amount_to_store
+            
+            self.current_storage += amount_to_store
+            return amount_to_store
+        
+        return 0
+    
+    def get_storage_info(self) -> dict:
+        """Get storage information for this building"""
+        if self.properties.get("function") != "storage":
+            return {}
+        
+        return {
+            "inventory": self.inventory.copy(),
+            "current_storage": self.current_storage,
+            "storage_capacity": self.storage_capacity,
+            "space_available": self.storage_capacity - self.current_storage
+        }
     
     def __str__(self):
         return f"Building({self.type.value}, {self.state.name}, {self.x}, {self.y})"

@@ -70,16 +70,24 @@ class InputHandler:
     def _handle_mouse_press(self, button, pos):
         """Handle mouse button press events"""
         if button == 1:  # Left click
-            self.renderer.handle_mouse_click(pos, self.world, self.workers)
+            # Pass buildings list from game (we'll need to update this)
+            buildings = getattr(self, 'buildings', [])
+            self.renderer.handle_mouse_click(pos, self.world, self.workers, buildings)
             
             # Get selected objects for debugging
             selected_tile = self.renderer.get_selected_tile()
             selected_worker = getattr(self.renderer, 'selected_worker', None)
+            selected_building = getattr(self.renderer, 'selected_building', None)
             
-            if selected_tile:
-                print(f"Selected tile: {selected_tile}")
-            elif selected_worker:
+            if selected_worker:
                 print(f"Selected worker: {selected_worker.name} ({selected_worker.type.value})")
+            elif selected_building:
+                print(f"Selected building: {selected_building.type.value} at ({selected_building.x}, {selected_building.y})")
+                if selected_building.properties.get("function") == "storage":
+                    storage_info = selected_building.get_storage_info()
+                    print(f"Storage: {storage_info['current_storage']}/{storage_info['storage_capacity']} items")
+            elif selected_tile:
+                print(f"Selected tile: {selected_tile}")
         
         elif button == 3:  # Right click
             # Could be used for context menus or other actions
