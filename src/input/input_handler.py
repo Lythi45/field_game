@@ -3,6 +3,7 @@ Input handling system for the game
 """
 
 import pygame
+from pygame.locals import MOUSEWHEEL
 from src.config import Config
 
 class InputHandler:
@@ -16,7 +17,7 @@ class InputHandler:
         # Input state
         self.keys_pressed = set()
         self.mouse_pos = (0, 0)
-        self.mouse_buttons = [False, False, False]  # Left, Middle, Right
+        self.mouse_buttons = [False, False, False, False, False]  # Left, Middle, Right, Wheel up, Wheel down
         
         # Camera movement
         self.camera_speed = Config.CAMERA_SPEED
@@ -29,6 +30,9 @@ class InputHandler:
         
         elif event.type == pygame.KEYUP:
             self.keys_pressed.discard(event.key)
+
+        elif event.type == MOUSEWHEEL:
+            self._handle_mouse_wheel(event.y)
         
         elif event.type == pygame.MOUSEBUTTONDOWN:
             self.mouse_buttons[event.button - 1] = True
@@ -40,8 +44,6 @@ class InputHandler:
         elif event.type == pygame.MOUSEMOTION:
             self.mouse_pos = event.pos
         
-        elif event.type == pygame.MOUSEWHEEL:
-            self._handle_mouse_wheel(event.y)
     
     def _handle_key_press(self, key):
         """Handle single key press events"""
