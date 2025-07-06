@@ -375,9 +375,11 @@ class Worker:
         harvest_result = world.harvest_crop(x, y)
         
         if harvest_result:
-            # Add to inventory
-            crop_type = harvest_result["type"].value
-            amount = harvest_result["amount"]
+            # harvest_result is a Crop object, not a dictionary
+            crop_type = harvest_result.type.value
+            # Get yield from the crop's harvest method
+            yield_info = harvest_result.harvest()
+            amount = yield_info["amount"]
             
             if crop_type in self.inventory:
                 self.inventory[crop_type] += amount
